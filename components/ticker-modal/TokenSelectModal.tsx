@@ -66,11 +66,7 @@ export function TokenSelectModal({
     const walletToken = walletTokens.find((t) => t.symbol === token.symbol);
     const usdValue =
       walletToken && token.price
-        ? PriceOracle.calculateUSDValue(
-            walletToken.balance!,
-            token.price,
-            token.decimals
-          )
+        ? parseFloat(walletToken.balance!) * token.price
         : null;
 
     return (

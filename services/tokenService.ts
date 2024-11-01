@@ -1,3 +1,5 @@
+import { PriceOracle } from "./priceOracle";
+
 interface KRC20Token {
   symbol: string;
   name: string;
@@ -27,12 +29,15 @@ export class TokenService {
         return [];
       }
       
-      this.tokenList = data.results.map((token: any) => ({
-        symbol: token.ticker,
-        name: token.ticker,
-        decimals: token.decimal || 8,
-        logo: token.iconUrl || null,
-        price: parseFloat(token.price?.floorPrice || '0')
+      this.tokenList = await Promise.all(data.results.map(async (token: any) => {
+        const price = await PriceOracle.getPrice(token.ticker);
+        return {
+          symbol: token.ticker,
+          name: token.ticker,
+          decimals: token.decimal || 8,
+          logo: token.iconUrl || null,
+          price: price || 0
+        };
       }));
       
       return this.tokenList;

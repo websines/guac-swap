@@ -66,8 +66,8 @@ export default function Home() {
       ]);
 
       if (
-        !fromTokenInfo?.price?.floorPrice ||
-        !toTokenInfo?.price?.floorPrice
+        !fromTokenInfo?.marketsData?.[0]?.marketData?.priceInUsd ||
+        !toTokenInfo?.marketsData?.[0]?.marketData?.priceInUsd
       ) {
         console.error("Could not fetch token prices");
         return;
@@ -75,20 +75,10 @@ export default function Home() {
 
       // Calculate USD values
       const fromTokenUsdValue =
-        parseFloat(value) * fromTokenInfo.price.floorPrice;
+        parseFloat(value) * fromTokenInfo.marketsData[0].marketData.priceInUsd;
       const estimatedAmount = (
-        fromTokenUsdValue / toTokenInfo.price.floorPrice
+        fromTokenUsdValue / toTokenInfo.marketsData[0].marketData.priceInUsd
       ).toFixed(8);
-
-      console.log("Price calculation:", {
-        fromToken,
-        toToken,
-        fromPrice: fromTokenInfo.price.floorPrice,
-        toPrice: toTokenInfo.price.floorPrice,
-        inputAmount: value,
-        usdValue: fromTokenUsdValue,
-        estimatedOutput: estimatedAmount,
-      });
 
       setToAmount(estimatedAmount);
       setEstimatedOutput(estimatedAmount);
@@ -118,6 +108,7 @@ export default function Home() {
         toToken,
         amount: fromAmount,
         toAddress: "kaspa:qr7ht6pzrd2m9s4c0x4ry6e8qkf3zrvwmcpxrlxajy",
+        expectedAmount: toAmount,
       };
 
       const result = await signSwapTransaction(swapDetails);

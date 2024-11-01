@@ -15,18 +15,13 @@ export function PriceDisplay({
   toAmount,
 }: PriceDisplayProps) {
   const [countdown, setCountdown] = useState(30);
-  const [fromPrice, setFromPrice] = useState<number | null>(null);
-  const [toPrice, setToPrice] = useState<number | null>(null);
+  const [prices, setPrices] = useState<Map<string, number>>(new Map());
 
   useEffect(() => {
     const fetchPrices = async () => {
       if (fromToken && toToken) {
-        const [newFromPrice, newToPrice] = await Promise.all([
-          PriceOracle.getPrice(fromToken),
-          PriceOracle.getPrice(toToken),
-        ]);
-        setFromPrice(newFromPrice);
-        setToPrice(newToPrice);
+        const newPrices = await PriceOracle.getPrices([fromToken, toToken]);
+        setPrices(newPrices);
         setCountdown(30);
       }
     };
@@ -43,22 +38,24 @@ export function PriceDisplay({
     };
   }, [fromToken, toToken]);
 
-  if (!fromPrice || !toPrice || !fromToken || !toToken) return null;
+  if (!prices.has(fromToken) || !prices.has(toToken)) return null;
 
-  const rate = toPrice / fromPrice;
+  const fromPrice = prices.get(fromToken)!;
+  const toPrice = prices.get(toToken)!;
+  const rate = fromPrice / toPrice;
 
   return (
     <div className="mt-4 p-4 rounded-lg bg-green-50 space-y-2">
       <div className="flex justify-between text-sm text-green-700">
         <span>
-          1 {fromToken} = {rate.toFixed(6)} {toToken}
+          1 {fromToken} = {rate.toFixed(8)} {toToken}
         </span>
         <span>Refreshing in {countdown}s</span>
       </div>
       {fromAmount && toAmount && (
         <div className="text-sm text-green-600">
-          ≈ ${(parseFloat(fromAmount) * fromPrice).toFixed(2)} → $
-          {(parseFloat(toAmount) * toPrice).toFixed(2)}
+          ≈ ${(parseFloat(fromAmount) * fromPrice).toFixed(4)} → $
+          {(parseFloat(toAmount) * toPrice).toFixed(4)}
         </div>
       )}
     </div>

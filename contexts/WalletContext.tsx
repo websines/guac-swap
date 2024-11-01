@@ -23,10 +23,17 @@ interface WalletContextType {
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
   signSwapTransaction: (swap: SwapTransaction) => Promise<{
-    txid: string;
+    orderId: string;
+    maker: string;
+    fromToken: string;
+    toToken: string;
+    fromAmount: string;
+    toAmount: string;
     signature: string;
     publicKey: string;
-    swapMessage: string;
+    status: "pending" | "matched" | "completed" | "cancelled";
+    createdAt: number;
+    expiresAt: number;
   }>;
 }
 
@@ -37,6 +44,7 @@ interface SwapTransaction {
   toToken: string;
   amount: string;
   toAddress: string;
+  expectedAmount: string;
 }
 
 export function WalletProvider({ children }: { children: ReactNode }) {
@@ -53,11 +61,17 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       const formattedTokens = [
         {
           symbol: "KAS",
+          name: "KAS",
+          decimals: 8,
           balance: (kasBalance.total / 100000000).toString(), // Convert from sompi to KAS
         },
         ...krc20Balances.map((token: any) => ({
           symbol: token.tick,
-          balance: token.balance,
+          name: token.tick,
+          decimals: parseInt(token.dec),
+          balance: (
+            parseInt(token.balance) / Math.pow(10, parseInt(token.dec))
+          ).toString(),
         })),
       ];
 
@@ -136,39 +150,31 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       setIsSwapping(true);
       const publicKey = await window.kasware.getPublicKey();
 
-      // Create KRC-20 transfer JSON
-      const transferJson = {
-        p: "krc-20",
-        op: "transfer",
-        tick: swap.fromToken,
-        amt: swap.amount,
-        to: swap.toAddress,
-      };
-
-      // Sign the transfer transaction
-      const txid = await window.kasware.signKRC20Transaction(
-        JSON.stringify(transferJson),
-        4,
-        swap.toAddress
-      );
-
       // Create and sign swap intent message
       const swapMessage = JSON.stringify({
         action: "swap",
-        fromTx: txid,
         fromToken: swap.fromToken,
         toToken: swap.toToken,
-        amount: swap.amount,
+        fromAmount: swap.amount,
+        toAmount: swap.expectedAmount,
         timestamp: Date.now(),
       });
 
       const signature = await window.kasware.signMessage(swapMessage);
 
+      // Return the order details directly instead of using SwapService
       return {
-        txid,
+        orderId: Date.now().toString(),
+        maker: account!,
+        fromToken: swap.fromToken,
+        toToken: swap.toToken,
+        fromAmount: swap.amount,
+        toAmount: swap.expectedAmount,
         signature,
         publicKey,
-        swapMessage,
+        status: "pending" as const,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 3600000, // 1 hour expiry
       };
     } catch (error) {
       console.error("Swap signing failed:", error);
