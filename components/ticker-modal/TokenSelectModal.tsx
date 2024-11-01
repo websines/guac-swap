@@ -15,6 +15,7 @@ import { Search } from "lucide-react";
 import { PriceOracle } from "@/services/priceOracle";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useInView } from "react-intersection-observer";
+import { useQuery } from "@tanstack/react-query";
 
 type KRC20Token = {
   symbol: string;
@@ -41,10 +42,23 @@ export function TokenSelectModal({
   const [searchQuery, setSearchQuery] = useState("");
   const { ref, inView } = useInView();
 
+  // First query for wallet tokens
+  const walletTokensQuery = useQuery({
+    queryKey: ["tokens", "wallet", walletTokens.map((t) => t.symbol)],
+    queryFn: () =>
+      TokenService.getTokensInfo(walletTokens.map((t) => t.symbol)),
+    enabled: walletTokens.length > 0,
+  });
+
+  // Second query for paginated tokens
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
     useInfiniteQuery({
-      queryKey: ["tokens"],
-      queryFn: ({ pageParam = 1 }) => TokenService.getTokens(pageParam),
+      queryKey: ["tokens", "all"],
+      queryFn: ({ pageParam = 1 }) =>
+        TokenService.getTokens(
+          pageParam,
+          walletTokens.map((t) => t.symbol)
+        ),
       initialPageParam: 1,
       getNextPageParam: (lastPage, pages) => {
         if (!lastPage.hasMore) return undefined;
@@ -58,13 +72,13 @@ export function TokenSelectModal({
     }
   }, [inView, fetchNextPage, hasNextPage]);
 
-  const allTokens = data?.pages.flatMap((page) => page.tokens) ?? [];
-  const sortedTokens = TokenService.sortTokensByBalance(
-    allTokens,
-    walletTokens
-  );
+  // Combine and sort tokens
+  const allTokens = [
+    ...(walletTokensQuery.data || []),
+    ...(data?.pages.flatMap((page) => page.tokens) ?? []),
+  ];
 
-  const filteredTokens = sortedTokens.filter(
+  const filteredTokens = allTokens.filter(
     (token) =>
       token.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
       token.name.toLowerCase().includes(searchQuery.toLowerCase())

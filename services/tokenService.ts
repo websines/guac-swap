@@ -13,7 +13,21 @@ export class TokenService {
   private static readonly API_ENDPOINT = "https://api-v2-do.kas.fyi/token/krc20/tokens";
   private static readonly PAGE_SIZE = 50;
 
-  static async getTokens(page: number = 1): Promise<{
+  static async getTokensInfo(tickers: string[]): Promise<KRC20Token[]> {
+    const tokens = await Promise.all(tickers.map(async (ticker) => {
+      const tokenInfo = await PriceOracle.getTokenInfo(ticker);
+      return {
+        symbol: ticker,
+        name: ticker,
+        decimals: tokenInfo?.decimal || 8,
+        logo: undefined,
+        price: tokenInfo?.marketsData?.[0]?.marketData?.priceInUsd || 0
+      };
+    }));
+    return tokens;
+  }
+
+  static async getTokens(page: number = 1, excludeTickers: string[] = []): Promise<{
     tokens: KRC20Token[];
     hasMore: boolean;
   }> {
@@ -25,14 +39,18 @@ export class TokenService {
       if (!response.ok) throw new Error('Failed to fetch tokens');
       const data = await response.json();
       
-      // Fetch prices for all tokens in parallel
-      const tokens = await Promise.all(data.results.map(async (token: any) => {
+      // Filter out wallet tokens and fetch prices for remaining
+      const filteredTokens = data.results.filter(
+        (token: any) => !excludeTickers.includes(token.ticker)
+      );
+
+      const tokens = await Promise.all(filteredTokens.map(async (token: any) => {
         const tokenInfo = await PriceOracle.getTokenInfo(token.ticker);
         return {
           symbol: token.ticker,
           name: token.ticker,
           decimals: token.decimal || 8,
-          logo: token.iconUrl || null,
+          logo: token.iconUrl || undefined,
           price: tokenInfo?.marketsData?.[0]?.marketData?.priceInUsd || 0
         };
       }));
