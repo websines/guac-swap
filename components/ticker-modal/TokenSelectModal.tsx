@@ -13,6 +13,8 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Search } from "lucide-react";
 import { PriceOracle } from "@/services/priceOracle";
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInView } from "react-intersection-observer";
 
 type KRC20Token = {
   symbol: string;
@@ -37,26 +39,32 @@ export function TokenSelectModal({
   tokens: walletTokens = [],
 }: TokenSelectModalProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [allTokens, setAllTokens] = useState<KRC20Token[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const { isConnected } = useWallet();
+  const { ref, inView } = useInView();
+
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } =
+    useInfiniteQuery({
+      queryKey: ["tokens"],
+      queryFn: ({ pageParam = 1 }) => TokenService.getTokens(pageParam),
+      initialPageParam: 1,
+      getNextPageParam: (lastPage, pages) => {
+        if (!lastPage.hasMore) return undefined;
+        return pages.length + 1;
+      },
+    });
 
   useEffect(() => {
-    const loadTokens = async () => {
-      setIsLoading(true);
-      const tokens = await TokenService.getAllTokens();
-      const sortedTokens = TokenService.sortTokensByBalance(
-        tokens,
-        walletTokens
-      );
-      setAllTokens(sortedTokens);
-      setIsLoading(false);
-    };
+    if (inView && hasNextPage) {
+      fetchNextPage();
+    }
+  }, [inView, fetchNextPage, hasNextPage]);
 
-    loadTokens();
-  }, [walletTokens]);
+  const allTokens = data?.pages.flatMap((page) => page.tokens) ?? [];
+  const sortedTokens = TokenService.sortTokensByBalance(
+    allTokens,
+    walletTokens
+  );
 
-  const filteredTokens = allTokens.filter(
+  const filteredTokens = sortedTokens.filter(
     (token) =>
       token.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
       token.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -124,15 +132,22 @@ export function TokenSelectModal({
           </div>
           <ScrollArea className="h-[300px]">
             {isLoading ? (
-              <div className="flex justify-center py-4">
-                <span className="text-gray-500">Loading tokens...</span>
+              <div className="flex justify-center items-center h-full">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500"></div>
               </div>
-            ) : filteredTokens.length > 0 ? (
-              filteredTokens.map(renderToken)
             ) : (
-              <div className="text-center py-4 text-gray-500">
-                No tokens found
-              </div>
+              <>
+                {filteredTokens.map(renderToken)}
+                <div ref={ref} className="py-2 text-center">
+                  {isFetchingNextPage ? (
+                    <span className="text-gray-500">Loading more...</span>
+                  ) : hasNextPage ? (
+                    <span className="text-gray-500">Load more</span>
+                  ) : (
+                    <span className="text-gray-500">No more tokens</span>
+                  )}
+                </div>
+              </>
             )}
           </ScrollArea>
         </div>

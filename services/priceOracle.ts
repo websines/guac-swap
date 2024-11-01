@@ -21,35 +21,35 @@ interface TokenInfo {
 
 export class PriceOracle {
   private static readonly API_ENDPOINT = "https://api-v2-do.kas.fyi/token/krc20";
-  private static readonly CACHE_DURATION = 30 * 1000;
-  private static priceCache: Map<string, { price: number, timestamp: number }> = new Map();
+  private static readonly CACHE_DURATION = 60 * 1000;
+  private static priceCache: Map<string, { 
+    price: number, 
+    timestamp: number,
+    marketsData?: any 
+  }> = new Map();
 
   static async getPrices(tickers: string[]): Promise<Map<string, number>> {
     const prices = new Map<string, number>();
-    const tickersToFetch: string[] = [];
-
-    // Check cache first
-    for (const ticker of tickers) {
+    const tickersToFetch = tickers.filter(ticker => {
       const cached = this.priceCache.get(ticker);
       if (cached && Date.now() - cached.timestamp < this.CACHE_DURATION) {
         prices.set(ticker, cached.price);
-      } else {
-        tickersToFetch.push(ticker);
+        return false;
       }
-    }
+      return true;
+    });
 
     if (tickersToFetch.length > 0) {
+      // Batch fetch prices
       const responses = await Promise.all(
-        tickersToFetch.map(ticker =>
-          fetch(`${this.API_ENDPOINT}/${ticker}/info`).then(res => res.json())
-        )
+        tickersToFetch.map(ticker => this.getTokenInfo(ticker))
       );
 
       responses.forEach((data, index) => {
-        const ticker = tickersToFetch[index];
-        const price = data?.marketsData?.[0]?.marketData?.priceInUsd || 0;
-        this.priceCache.set(ticker, { price, timestamp: Date.now() });
-        prices.set(ticker, price);
+        if (data?.marketsData?.[0]?.marketData?.priceInUsd) {
+          const price = data.marketsData[0].marketData.priceInUsd;
+          prices.set(tickersToFetch[index], price);
+        }
       });
     }
 
@@ -68,9 +68,29 @@ export class PriceOracle {
 
   static async getTokenInfo(ticker: string): Promise<TokenInfo | null> {
     try {
+      // Check cache first
+      const cached = this.priceCache.get(ticker);
+      if (cached && Date.now() - cached.timestamp < this.CACHE_DURATION) {
+        return {
+          price: { floorPrice: cached.price, marketCapInUsd: 0, change24h: 0 },
+          marketsData: cached.marketsData || [],
+          ticker,
+          decimal: 8
+        };
+      }
+
       const response = await fetch(`${this.API_ENDPOINT}/${ticker}/info`);
       if (!response.ok) throw new Error('Failed to fetch token info');
-      return await response.json();
+      const data = await response.json();
+
+      // Cache the full response
+      this.priceCache.set(ticker, {
+        price: data?.marketsData?.[0]?.marketData?.priceInUsd || 0,
+        marketsData: data.marketsData,
+        timestamp: Date.now()
+      });
+
+      return data;
     } catch (error) {
       console.error('Failed to fetch token info:', error);
       return null;

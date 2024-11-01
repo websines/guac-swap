@@ -7,6 +7,7 @@ import {
   useEffect,
   ReactNode,
 } from "react";
+import { SwapService, SwapOrder } from "@/services/swapService";
 
 interface Token {
   symbol: string;
@@ -22,19 +23,7 @@ interface WalletContextType {
   isSwapping: boolean;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
-  signSwapTransaction: (swap: SwapTransaction) => Promise<{
-    orderId: string;
-    maker: string;
-    fromToken: string;
-    toToken: string;
-    fromAmount: string;
-    toAmount: string;
-    signature: string;
-    publicKey: string;
-    status: "pending" | "matched" | "completed" | "cancelled";
-    createdAt: number;
-    expiresAt: number;
-  }>;
+  signSwapTransaction: (swap: SwapTransaction) => Promise<SwapOrder>;
 }
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
@@ -145,26 +134,26 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const signSwapTransaction = async (swap: SwapTransaction) => {
+  const signSwapTransaction = async (
+    swap: SwapTransaction
+  ): Promise<SwapOrder> => {
+    if (!window.kasware) throw new Error("Kasware wallet not found");
+
     try {
-      setIsSwapping(true);
+      const psktData = {
+        tick: swap.fromToken,
+        amt: parseFloat(swap.amount).toString(),
+        op: "transfer",
+      };
+
+      const signature = await window.kasware.signKRC20Transaction(
+        JSON.stringify(psktData),
+        1, // type for transfer
+        swap.toAddress
+      );
       const publicKey = await window.kasware.getPublicKey();
 
-      // Create and sign swap intent message
-      const swapMessage = JSON.stringify({
-        action: "swap",
-        fromToken: swap.fromToken,
-        toToken: swap.toToken,
-        fromAmount: swap.amount,
-        toAmount: swap.expectedAmount,
-        timestamp: Date.now(),
-      });
-
-      const signature = await window.kasware.signMessage(swapMessage);
-
-      // Return the order details directly instead of using SwapService
-      return {
-        orderId: Date.now().toString(),
+      return SwapService.createOrder({
         maker: account!,
         fromToken: swap.fromToken,
         toToken: swap.toToken,
@@ -172,15 +161,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         toAmount: swap.expectedAmount,
         signature,
         publicKey,
-        status: "pending" as const,
-        createdAt: Date.now(),
-        expiresAt: Date.now() + 3600000, // 1 hour expiry
-      };
+      });
     } catch (error) {
-      console.error("Swap signing failed:", error);
+      console.error("Failed to sign swap transaction:", error);
       throw error;
-    } finally {
-      setIsSwapping(false);
     }
   };
 
